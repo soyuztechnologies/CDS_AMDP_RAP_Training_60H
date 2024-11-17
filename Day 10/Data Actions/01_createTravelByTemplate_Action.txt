@@ -1,0 +1,97 @@
+1. In the behavior definition of Root
+
+action factory createTravelByTemplate[1];
+
+2. Expose the Behavior Definition
+
+use action createTravelByTemplate;
+
+3. Fiori App Annotation
+
+@UI: {
+          lineItem:       [ { position: 50, importance: #HIGH },
+                            { type: #FOR_ACTION, dataAction: 'createTravelByTemplate', 
+                              label: 'Create Travel by Template' } ],
+          identification: [ { position: 45, label: 'Status [O(Open)|A(Accepted)|X(Canceled)]' } ] }
+      Status     as TravelStatus,
+
+4. Implementation code for Copy and Create new Travel Request
+
+METHOD createTravelByTemplate.
+
+
+    DATA:
+      travels      TYPE TABLE FOR CREATE zi_mt_xx_travel_m\\travel,
+      bookings_cba TYPE TABLE FOR CREATE zi_mt_xx_travel_m\\travel\_booking.
+
+    SELECT MAX( travel_id ) FROM /dmo/travel INTO @DATA(lv_travel_id). "#EC CI_NOWHERE
+
+    READ TABLE keys WITH KEY %cid = '' INTO DATA(key_with_inital_cid).
+    ASSERT key_with_inital_cid IS INITIAL.
+
+    READ ENTITIES OF zi_mt_xx_travel_m IN LOCAL MODE
+      ENTITY Travel
+       ALL FIELDS WITH CORRESPONDING #( keys )
+    RESULT DATA(travel_read_result)
+    FAILED failed.
+
+    READ ENTITIES OF zi_mt_xx_travel_m IN LOCAL MODE
+      ENTITY Travel BY \_booking
+       ALL FIELDS WITH CORRESPONDING #( travel_read_result )
+     RESULT DATA(book_read_result).
+
+    LOOP AT travel_read_result ASSIGNING FIELD-SYMBOL(<travel>).
+      "Fill travel container for creating new travel instance
+      APPEND VALUE #( %cid     = keys[ KEY entity %tky = <travel>-%tky ]-%cid
+                      %data    = CORRESPONDING #( <travel> EXCEPT travelid ) )
+        TO travels ASSIGNING FIELD-SYMBOL(<new_travel>).
+
+      "Fill %cid_ref of travel as instance identifier for cba booking
+      APPEND VALUE #( %cid_ref = keys[ KEY entity %tky = <travel>-%tky ]-%cid )
+        TO bookings_cba ASSIGNING FIELD-SYMBOL(<bookings_cba>).
+
+      <new_travel>-TravelId = lv_travel_id + sy-tabix.
+      <new_travel>-begindate     = cl_abap_context_info=>get_system_date( ).
+      <new_travel>-enddate       = cl_abap_context_info=>get_system_date( ) + 30.
+      <new_travel>-status = 'O'.  "Set to open to allow an editable instance
+
+      LOOP AT book_read_result ASSIGNING FIELD-SYMBOL(<booking>) USING KEY entity
+        WHERE travelid EQ <travel>-travelid.
+        "Fill booking container for creating booking with cba
+        APPEND VALUE #( %cid     = keys[ KEY entity %tky = <travel>-%tky ]-%cid && <booking>-bookingid
+                        %data    = CORRESPONDING #(  book_read_result[ KEY entity %tky = <booking>-%tky ] EXCEPT travelid ) )
+          TO <bookings_cba>-%target ASSIGNING FIELD-SYMBOL(<new_booking>).
+            <new_booking>-TravelId = <new_travel>-TravelId.
+      ENDLOOP.
+    ENDLOOP.
+
+    "create new BO instance
+    MODIFY ENTITIES OF zi_mt_xx_travel_m IN LOCAL MODE
+      ENTITY travel
+        CREATE FIELDS ( travelid
+        agencyid
+        customerid
+        begindate
+        enddate
+        bookingfee
+        totalprice
+        currencycode
+        status memo )
+          WITH travels
+        CREATE BY \_Booking FIELDS ( bookingid
+        travelid
+        bookingdate
+        customerid
+        carrierid
+        connectionid
+        flightdate
+        flightprice
+        currencycode
+         )
+          WITH bookings_cba
+      MAPPED DATA(mapped_create).
+
+    mapped-travel   =  mapped_create-travel .
+
+ENDMETHOD.
+
