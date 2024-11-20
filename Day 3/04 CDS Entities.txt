@@ -1,157 +1,181 @@
-@AbapCatalog.sqlViewName: 'ZATSXXCDSVIEW'
+@AbapCatalog.sqlViewName: 'ZDXC_XXFIRSTCDS'
 @AbapCatalog.compiler.compareFilter: true
 @AbapCatalog.preserveKey: true
 @AccessControl.authorizationCheck: #NOT_REQUIRED
-@EndUserText.label: 'Old approach of CDS views'
-define view ZATS_XX_CDS_VIEW as select from zats_xx_bpa
+@EndUserText.label: 'My First CDS view'
+@Metadata.ignorePropagatedAnnotations: true
+define view ZDXC_XX_FIRST_CDS as select from snwd_bpa
 {
-    key bp_id as BpId,
+    key node_key as NodeKey,
     bp_role as BpRole,
-    company_name as CompanyName,
-    street as Street,
-    country as Country,
-    region as Region,
-    city as City
-}
+    address_guid as AddressGuid,
+    bp_id as BpId,
+    company_name as CompanyName
+
+} 
 
 
 
-
-
-@AbapCatalog.viewEnhancementCategory: [#NONE]
+@AbapCatalog.viewEnhancementCategory: [#PROJECTION_LIST]
 @AccessControl.authorizationCheck: #NOT_REQUIRED
-@EndUserText.label: 'Business partners'
+@EndUserText.label: 'My CDS entity concept just like view'
 @Metadata.ignorePropagatedAnnotations: true
 @ObjectModel.usageType:{
     serviceQuality: #X,
     sizeCategory: #S,
     dataClass: #MIXED
 }
-define view entity ZI_ATS_XX_BPA as select from zats_xx_bpa
-association[1] to I_Country as _Country on
-$projection.CountryCode = _Country.Country
+@AbapCatalog.extensibility : { extensible: true,
+                                elementSuffix: 'ZSH' }
+
+define view entity ZDXC_XX_CDS_ENTITY 
+with parameters p_curr : snwd_curr_code
+ as select from snwd_bpa
 {
-    key bp_id as BpId,
-    bp_role as BpRole,
-    company_name as CompanyName,
-    street as Street,
-    country as CountryCode,
-    region as Region,
-    city as City,
-    _Country._Text[Language = $session.system_language].CountryName as CountryName
-}
+    key node_key as NodeKey,
+    case bp_role
+        when '01' then 'Customer'
+        when '02' then 'Supplier'
+        end as BpRole,
+    address_guid as AddressGuid,
+    bp_id as BpId,
+    company_name as CompanyName
+    
+} where currency_code = $parameters.p_curr
 
 
 
 
+*&---------------------------------------------------------------------*
+*& Report ZDXC_XX_consume_cds
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT ZDXC_XX_consume_cds.
+
+select * from ZDXC_XX_CDS_ENTITY( p_curr = 'USD' ) into table @data(itab).
+
+cl_demo_output=>display_data(
+  value   = itab
+*  name    =
+*  exclude =
+*  include =
+).
 
 
-
-@AbapCatalog.viewEnhancementCategory: [#NONE]
-@AccessControl.authorizationCheck: #NOT_REQUIRED
-@EndUserText.label: 'Product master data CDS entity'
-@Metadata.ignorePropagatedAnnotations: true
-@ObjectModel.usageType:{
-    serviceQuality: #X,
-    sizeCategory: #S,
-    dataClass: #MIXED
-}
-define view entity ZI_ATS_XX_PRODUCT as select from zats_xx_product
-{
-    key product_id as ProductId,
-    name as Name,
-    category as Category,
-    @Semantics.amount.currencyCode: 'Currency'
-    price as Price,
-    currency as Currency,
-    discount as Discount
-}
-
-
-@AbapCatalog.viewEnhancementCategory: [#NONE]
-@AccessControl.authorizationCheck: #NOT_REQUIRED
-@EndUserText.label: 'Sales Fact data'
-@Metadata.ignorePropagatedAnnotations: true
-@ObjectModel.usageType:{
-    serviceQuality: #X,
-    sizeCategory: #S,
-    dataClass: #MIXED
-}
-define view entity ZI_ATS_XX_SALES as select from zats_xx_so_hdr  as hdr
-association[1..*] to zats_xx_so_item as _Items on
-$projection.OrderId = _Items.order_id
-{
-    key hdr.order_id as OrderId,
-    hdr.order_no as OrderNo,
-    hdr.buyer as Buyer,
-    hdr.created_by as CreatedBy,
-    hdr.created_on as CreatedOn,
-    _Items    
+extend view entity ZDXC_XX_CDS_ENTITY with {
+    snwd_bpa.email_address as EmailAddress,
+    snwd_bpa.web_address as Website
 }
 
 
 
 @AbapCatalog.viewEnhancementCategory: [#NONE]
 @AccessControl.authorizationCheck: #NOT_REQUIRED
-@EndUserText.label: 'Sales Composite, Cube view for sales data'
+@EndUserText.label: 'View on view concept'
 @Metadata.ignorePropagatedAnnotations: true
 @ObjectModel.usageType:{
     serviceQuality: #X,
     sizeCategory: #S,
     dataClass: #MIXED
 }
-@Analytics.dataCategory: #CUBE
-define view entity ZI_ATS_XX_SALES_CUBE as select from ZI_ATS_XX_SALES
-association[1] to ZI_ATS_XX_BPA as _BusinessPartner on
-$projection.Buyer = _BusinessPartner.BpId
-association[1] to ZI_ATS_XX_PRODUCT as _Product on 
-$projection.Product = _Product.ProductId
+define view entity ZDXC_XX_VOV as select from ZDXC_XX_CDS_ENTITY( p_curr : 'EUR' ) as bpa
+inner join snwd_ad as address on
+bpa.AddressGuid = address.node_key
 {
-    key ZI_ATS_XX_SALES.OrderId,
-    key ZI_ATS_XX_SALES._Items.item_id as ItemId,
-    ZI_ATS_XX_SALES.OrderNo,
-    ZI_ATS_XX_SALES.Buyer,
-    ZI_ATS_XX_SALES.CreatedBy,
-    ZI_ATS_XX_SALES.CreatedOn,
-    /* Associations */
-    ZI_ATS_XX_SALES._Items.product as Product,
-    @DefaultAggregation: #SUM
+//Ctrl+space to bring all fields from child view
+    key bpa.NodeKey,
+    bpa.BpRole,
+    bpa.AddressGuid,
+    bpa.BpId,
+    bpa.CompanyName,
+    bpa.EmailAddress,
+    bpa.Website,
+    address.city as City,
+    address.country as Country
+}
+
+
+
+@AbapCatalog.viewEnhancementCategory: [#NONE]
+@AccessControl.authorizationCheck: #NOT_REQUIRED
+@EndUserText.label: 'German Customers'
+@Metadata.ignorePropagatedAnnotations: true
+@ObjectModel.usageType:{
+    serviceQuality: #X,
+    sizeCategory: #S,
+    dataClass: #MIXED
+}
+define view entity ZDXC_XX_CUSTOMERS_DE as select from ZDXC_XX_VOV
+{
+    key NodeKey,
+    BpRole,
+    AddressGuid,
+    BpId,
+    CompanyName,
+    EmailAddress,
+    Website,
+    City,
+    Country
+} where Country = 'DE'
+
+
+
+@AbapCatalog.viewEnhancementCategory: [#NONE]
+@AccessControl.authorizationCheck: #NOT_REQUIRED
+@EndUserText.label: 'German customers total sales'
+@Metadata.ignorePropagatedAnnotations: true
+@ObjectModel.usageType:{
+    serviceQuality: #X,
+    sizeCategory: #S,
+    dataClass: #MIXED
+}
+define view entity ZDXC_XX_TOTAL_SALES_DE as select from ZDXC_XX_CUSTOMERS_DE as cust
+inner join snwd_so as sales on
+cust.NodeKey = sales.buyer_guid
+{
+    key cust.CompanyName,
+    cust.Country,
+    cust.BpId,
     @Semantics.amount.currencyCode: 'CurrencyCode'
-    ZI_ATS_XX_SALES._Items.amount as GrossAmount,
-    ZI_ATS_XX_SALES._Items.currency as CurrencyCode,
-    @DefaultAggregation: #SUM
-    @Semantics.quantity.unitOfMeasure: 'UnitOfMeasure'
-    ZI_ATS_XX_SALES._Items.qty as Quantity,
-    ZI_ATS_XX_SALES._Items.uom as UnitOfMeasure,
-    _Product,
-    _BusinessPartner
-}
+    sum( sales.gross_amount ) as TotalSales,
+    sales.currency_code as CurrencyCode
+} group by cust.CompanyName, cust.Country, cust.BpId, sales.currency_code
+
 
 
 @AbapCatalog.viewEnhancementCategory: [#NONE]
 @AccessControl.authorizationCheck: #NOT_REQUIRED
-@EndUserText.label: 'Sales Analytics Consumption view'
-@Metadata.ignorePropagatedAnnotations: false
+@EndUserText.label: 'Association concept'
+@Metadata.ignorePropagatedAnnotations: true
 @ObjectModel.usageType:{
     serviceQuality: #X,
     sizeCategory: #S,
     dataClass: #MIXED
 }
-@Analytics.query: true
-define view entity ZC_ATS_XX_SALES_ANA as select from ZI_ATS_XX_SALES_CUBE
+@OData.publish: true
+define view entity ZDXC_XX_ASSOCIATION as select from ZDXC_XX_CDS_ENTITY( p_curr : 'EUR' ) as cust
+association[*] to snwd_so as _Sales on
+// By using $projection we can use field alias names in join
+// which is a best-practice/gold standard
+$projection.CustomerKey = _Sales.buyer_guid
 {
-    key _BusinessPartner.CompanyName,
-    key _BusinessPartner.CountryName,
-    GrossAmount,
-    CurrencyCode,
-    Quantity,
-    UnitOfMeasure
-}
-
-
-
-@EndUserText.label: 'Service definition for Sales order model'
-define service ZATS_XX_SO_SD {
-  expose ZC_ATS_XX_SALES_ANA as SalesSet;
+    key cust.NodeKey as CustomerKey,
+    cust.BpRole,
+    cust.AddressGuid,
+    cust.BpId,
+    cust.CompanyName,
+    cust.EmailAddress,
+    cust.Website,
+    --exposed association == lose coupling, join will apply on demand
+    --                       only for one customer, Interactive Report
+    _Sales
+    
+    --ad-hoc association == tight coupling, join will be applied always
+//    _Sales.so_id as SalesOrderId,
+//    @Semantics.amount.currencyCode: 'Currency'
+//    _Sales.gross_amount as GrossAmount,
+//    _Sales.currency_code as Currency,
+//    _Sales.buyer_guid as BuyerGuid
 }
 

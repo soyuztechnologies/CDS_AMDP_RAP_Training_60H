@@ -82,6 +82,9 @@ on $projection.Product = _Products.ProductId
   _Products,
   _BusinessPartner
 }
+
+
+
 @AbapCatalog.sqlViewName: 'zdxcXXCSLSCUST'
 @AbapCatalog.compiler.compareFilter: true
 @AbapCatalog.preserveKey: true
